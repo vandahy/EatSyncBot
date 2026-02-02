@@ -1,0 +1,89 @@
+# ============================================
+# THÔNG TIN BẢO MẬT (BẮT BUỘC BỎ QUA)
+# ============================================
+.env
+.env.local
+.env.*.local
+*.session
+*.session-journal
+config.json
+secrets.json
+
+# ============================================
+# PYTHON - Môi trường ảo và bytecode
+# ============================================
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# ============================================
+# PYTHON - Distribution / packaging
+# ============================================
+dist/
+build/
+output/
+*.egg-info/
+.eggs/
+*.egg
+wheels/
+pip-wheel-metadata/
+
+# ============================================
+# IDE / EDITOR
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# ============================================
+# HỆ ĐIỀU HÀNH
+# ============================================
+Thumbs.db
+.DS_Store
+desktop.ini
+*.lnk
+
+# ============================================
+# LOGS VÀ DATABASE
+# ============================================
+*.log
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+
+# ============================================
+# TESTING / COVERAGE
+# ============================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# ============================================
+# FILE TẠM VÀ DỮ LIỆU
+# ============================================
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+menu_temp.jpg
+menu_server.jpg
+temp/
+tmp/
+*.tmp
+*.bak
+*.swp
