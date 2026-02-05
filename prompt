@@ -1,0 +1,22 @@
+        prompt_text = """
+Bạn là chuyên gia phân loại ảnh. Hãy xác định ảnh này có phải là THỰC ĐƠN MÓN ĂN không.
+
+Thực đơn món ăn thường có:
+- Danh sách các món ăn (cơm, phở, bún, canh, v.v.)
+- Các ngày trong tuần (Thứ 2, Thứ 3, ...)
+- Tên quán ăn hoặc căng tin
+- Giá tiền món ăn
+
+KHÔNG PHẢI thực đơn nếu là:
+- Tài liệu văn bản thông thường
+- Ảnh chụp màn hình
+- Biểu đồ, báo cáo
+- Ảnh cá nhân, phong cảnh
+- Meme, poster quảng cáo
+
+Trả về JSON:
+{
+  "is_menu": true/false,
+  "reason": "Giải thích ngắn gọn"
+}
+        """
