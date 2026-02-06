@@ -247,10 +247,30 @@ def validate_is_menu_image(image_bytes):
     """
     Kiểm tra nhanh xem ảnh có phải là thực đơn món ăn không.
     Trả về True nếu là menu, False nếu không phải.
+
+    Cải tiến:
+    - Tạo "normalized" JPEG bytes (loại metadata, convert RGB, fixed quality) để hash ổn định
+    - Thêm logging thời gian để biết đâu tốn thời gian (cache vs AI)
     """
+    start_time = time.perf_counter()
     try:
-        #check cache, nếu có cache thì skip AI
-        img_hash = hashlib.md5(image_bytes).hexdigest()
+        # Tạo bản normalized để đảm bảo hash ổn định dù image metadata thay đổi
+        try:
+            img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+            norm_buf = io.BytesIO()
+            # Lưu với quality cố định, không giữ metadata
+            img.save(norm_buf, format='JPEG', quality=90, optimize=True)
+            norm_bytes = norm_buf.getvalue()
+            img_hash = hashlib.md5(norm_bytes).hexdigest()
+            size_kb = len(norm_bytes) / 1024
+            w, h = img.size
+        except Exception:
+            # Fallback: hash raw bytes
+            img_hash = hashlib.md5(image_bytes).hexdigest()
+            size_kb = len(image_bytes) / 1024
+            w, h = (None, None)
+
+        # Cache check
         if img_hash in menu_cache:
             is_menu, cached_time = menu_cache[img_hash]
             age = time.time() - cached_time
@@ -258,18 +278,20 @@ def validate_is_menu_image(image_bytes):
                 menu_cache.move_to_end(img_hash)  # Cập nhật LRU
                 day_left = int((CACHE_TTL - age) / 86400)
                 hours_ago = int(age / 3600)
-                print(f"💾 [Cache HIT] Ảnh đã check {hours_ago}h trước (Còn {day_left} ngày)")
+                elapsed = (time.perf_counter() - start_time)
+                print(f"💾 [Cache HIT] hash={img_hash} size={size_kb:.1f}KB {w}x{h} age={hours_ago}h left={day_left}d (checked in {elapsed:.2f}s)")
                 return is_menu
             else:
-                print(f"💾 [Cache EXPIRED] Ảnh đã hết hạn cache, kiểm tra lại với AI.")
+                print(f"💾 [Cache EXPIRED] hash={img_hash}, kiểm tra lại với AI.")
                 del menu_cache[img_hash]
                 save_cache()
 
+        print(f"--- [Validation] Đang kiểm tra ảnh... (hash={img_hash}, size={size_kb:.1f}KB, {w}x{h})")
 
-        print(f"--- [Validation] Đang kiểm tra ảnh...")
-        img = Image.open(io.BytesIO(image_bytes))
-        img_base64 = optimize_image_for_ai(img)
-        
+        # Dùng optimized image cho lần gọi AI để giảm payload và thời gian
+        img_for_ai = Image.open(io.BytesIO(image_bytes))
+        img_base64 = optimize_image_for_ai(img_for_ai)
+
         # Prompt đơn giản chỉ để phân loại
         prompt_text = """
 Bạn là chuyên gia phân loại ảnh. Hãy xác định ảnh này có phải là THỰC ĐƠN MÓN ĂN không.
@@ -293,37 +315,41 @@ Trả về JSON:
   "reason": "Giải thích ngắn gọn"
 }
         """
-        
+
+        ai_start = time.perf_counter()
         response = model.generate_content(
-            [prompt_text, img],
+            [prompt_text, img_for_ai],
             generation_config=genai.types.GenerationConfig(
                 response_mime_type="application/json"
             )
         )
-        
+        ai_elapsed = time.perf_counter() - ai_start
+
         result = json.loads(response.text)
         is_menu = result.get('is_menu', False)
         reason = result.get('reason', 'Không rõ')
-        
-        print(f"🔍 [Validation]: {reason}")
+
+        elapsed = time.perf_counter() - start_time
+        print(f"🔍 [Validation]: {reason} (AI took {ai_elapsed:.2f}s, total {elapsed:.2f}s)")
         print(f"📋 Kết quả: {'✅ Là menu' if is_menu else '❌ Không phải menu'}")
 
+        # Lưu vào cache dùng hash normalized
         menu_cache[img_hash] = (is_menu, time.time())
         menu_cache.move_to_end(img_hash)
-        
+
         # 🗑️ Xóa ảnh cũ nhất nếu cache đầy
         if len(menu_cache) > MAX_CACHE_SIZE:
             oldest_hash, oldest_data = menu_cache.popitem(last=False)
             days_ago = int((time.time() - oldest_data[1]) / 86400)
             print(f"🗑️ [Cache FULL] Đã xóa ảnh cũ nhất (check {days_ago} ngày trước)")
-        
+
         # 💾 LƯU VÀO FILE
         save_cache()
-        
+
         print(f"💾 [Cache SAVED] Tổng: {len(menu_cache)} ảnh | TTL: 7 ngày")
-        
+
         return is_menu
-        
+
     except Exception as e:
         print(f"⚠️ Lỗi validation: {e}")
         # Nếu lỗi, cho qua để không làm gián đoạn bot
@@ -386,6 +412,15 @@ class MenuPopup:
         self.lbl_progress.pack(pady=5)
         self.listbox = tk.Listbox(self.root, font=("Arial", 11))
         self.listbox.pack(fill=tk.BOTH, expand=True, padx=10)
+
+        # Checkbox để chọn 'Ít cơm' (mặc định vô hiệu, chỉ bật khi có món được load)
+        self.less_rice_var = tk.BooleanVar(value=False)
+        self.chk_less_rice = tk.Checkbutton(self.root, text="Ít cơm", variable=self.less_rice_var, state=tk.DISABLED)
+        self.chk_less_rice.pack(pady=6)
+
+        # Cho phép double-click để chốt nhanh
+        self.listbox.bind("<Double-Button-1>", lambda e: self.confirm())
+
         self.btn = tk.Button(self.root, text="CHỐT MÓN NÀY", command=self.confirm, state=tk.DISABLED, bg="green", fg="white")
         self.btn.pack(pady=10, fill=tk.X)
         self.auto_close_job = None
@@ -410,18 +445,37 @@ class MenuPopup:
     def update_list(self, dishes):
         if not dishes:
             self.lbl_status.config(text="❌ Không đọc được!", fg="red")
+            # Đảm bảo checkbox bị vô hiệu nếu không có món
+            try:
+                self.chk_less_rice.config(state=tk.DISABLED)
+                self.less_rice_var.set(False)
+            except Exception:
+                pass
             self.root.after(2000, self.root.destroy)
             return
         self.lbl_status.config(text=f"✅ Menu {self.day_str}", fg="black")
         self.listbox.delete(0, tk.END)
         for d in dishes: self.listbox.insert(tk.END, d)
+        # Bật nút chốt và checkbox
         self.btn.config(state=tk.NORMAL)
+        try:
+            self.chk_less_rice.config(state=tk.NORMAL)
+            # Mặc định không chọn 'Ít cơm'
+            self.less_rice_var.set(False)
+        except Exception:
+            pass
         if self.listbox.size() > 0: self.listbox.selection_set(0)
         self.root.focus_force()
 
     def confirm(self):
         if self.listbox.curselection():
             self.selected_dish = self.listbox.get(self.listbox.curselection())
+            # Nếu người dùng muốn ăn ít cơm, thêm chú thích
+            try:
+                if self.less_rice_var.get():
+                    self.selected_dish = f"{self.selected_dish} (ít cơm)"
+            except Exception:
+                pass
             self.root.destroy()
 
 # ================= USERBOT LOGIC =================
@@ -445,7 +499,10 @@ async def main_handler(event):
     
     # Tải ảnh trước để validate
     try:
+        dl_start = time.perf_counter()
         await event.download_media(file=memory_file)
+        dl_elapsed = time.perf_counter() - dl_start
+        print(f"⬇️ [Download] Tải ảnh xong trong {dl_elapsed:.2f}s")
         memory_file.seek(0)
         image_bytes = memory_file.getvalue()
         
