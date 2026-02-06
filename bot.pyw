@@ -10,6 +10,10 @@ import io
 import base64   
 import genkit.core.schema
 
+from collections import OrderedDict
+import hashlib
+import time
+import json
 # ==============================================================================
 # [PATCH FIX] VÁ LỖI GENKIT ALPHA
 # ==============================================================================
@@ -69,7 +73,12 @@ except Exception as e:
 
 GROUP_ID = [-268078931, -5162755092]
 
-# === 1. KHỞI TẠO GOOGLE AI (RAW SDK) ===
+# === CACHE THÔNG MINH CHO MENU CÔNG TY ===
+CACHE_FILE = get_path('menu_cache.json')
+MAX_CACHE_SIZE = 20
+CACHE_TTL = 604800  # 7 ngày
+
+# === 1. KHỞI TẠO GOOGLE AI (RAW SDK) === 
 # Genkit Alpha đang lỗi Pydantic/Serialization, chuyển sang dùng SDK gốc cho ổn định
 genai.configure(api_key=GEMINI_API_KEY)
 
@@ -186,6 +195,140 @@ def get_today_vietnamese():
     days = {0: "THỨ 2", 1: "THỨ 3", 2: "THỨ 4", 3: "THỨ 5", 4: "THỨ 6", 5: "THỨ 7", 6: "CN"}
     return days.get(weekday, "CN")
 
+def load_cache():
+    if not os.path.exists(CACHE_FILE):
+        print(f"📂 [Cache] File chưa tồn tại, tạo file mới: {CACHE_FILE}")
+        # Tạo file JSON rỗng
+        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump({}, f)
+        return OrderedDict()
+    try:
+        with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+            cache_data = json.load(f)
+
+        current__time = time.time()
+        valid_cache = OrderedDict()
+        expired_count = 0
+
+        for img_hash, (is_menu, cached_time) in cache_data.items():
+            age = current__time - cached_time
+            if age < CACHE_TTL:
+                valid_cache[img_hash] = (is_menu, cached_time)
+            else:
+                expired_count += 1
+        
+        if expired_count > 0:
+            print(f"--- [Cache] Đã xóa {expired_count} mục hết hạn.")
+        
+        print(f"--- [Cache] Tải {len(valid_cache)} mục hợp lệ từ cache.")
+        if expired_count > 0:
+            with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(dict(valid_cache), f, ensure_ascii=False, indent=2)
+        
+        return valid_cache
+    except FileNotFoundError:
+        print(f"--- [Cache] Không tìm thấy file cache. Tạo mới.")
+        return OrderedDict()
+    except Exception as e:
+        print(f"--- [Cache] Lỗi khi tải cache: {e}")
+        return OrderedDict()
+    
+menu_cache = load_cache()
+
+def save_cache():
+    """Lưu cache vào file JSON"""
+    try:
+        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(dict(menu_cache), f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"⚠️ [Cache] Lỗi ghi file: {e}")
+
+def validate_is_menu_image(image_bytes):
+    """
+    Kiểm tra nhanh xem ảnh có phải là thực đơn món ăn không.
+    Trả về True nếu là menu, False nếu không phải.
+    """
+    try:
+        #check cache, nếu có cache thì skip AI
+        img_hash = hashlib.md5(image_bytes).hexdigest()
+        if img_hash in menu_cache:
+            is_menu, cached_time = menu_cache[img_hash]
+            age = time.time() - cached_time
+            if age < CACHE_TTL:
+                menu_cache.move_to_end(img_hash)  # Cập nhật LRU
+                day_left = int((CACHE_TTL - age) / 86400)
+                hours_ago = int(age / 3600)
+                print(f"💾 [Cache HIT] Ảnh đã check {hours_ago}h trước (Còn {day_left} ngày)")
+                return is_menu
+            else:
+                print(f"💾 [Cache EXPIRED] Ảnh đã hết hạn cache, kiểm tra lại với AI.")
+                del menu_cache[img_hash]
+                save_cache()
+
+
+        print(f"--- [Validation] Đang kiểm tra ảnh...")
+        img = Image.open(io.BytesIO(image_bytes))
+        img_base64 = optimize_image_for_ai(img)
+        
+        # Prompt đơn giản chỉ để phân loại
+        prompt_text = """
+Bạn là chuyên gia phân loại ảnh. Hãy xác định ảnh này có phải là THỰC ĐƠN MÓN ĂN không.
+
+Thực đơn món ăn thường có:
+- Danh sách các món ăn (cơm, phở, bún, canh, v.v.)
+- Các ngày trong tuần (Thứ 2, Thứ 3, ...)
+- Tên quán ăn hoặc căng tin
+- Giá tiền món ăn
+
+KHÔNG PHẢI thực đơn nếu là:
+- Tài liệu văn bản thông thường
+- Ảnh chụp màn hình
+- Biểu đồ, báo cáo
+- Ảnh cá nhân, phong cảnh
+- Meme, poster quảng cáo
+
+Trả về JSON:
+{
+  "is_menu": true/false,
+  "reason": "Giải thích ngắn gọn"
+}
+        """
+        
+        response = model.generate_content(
+            [prompt_text, img],
+            generation_config=genai.types.GenerationConfig(
+                response_mime_type="application/json"
+            )
+        )
+        
+        result = json.loads(response.text)
+        is_menu = result.get('is_menu', False)
+        reason = result.get('reason', 'Không rõ')
+        
+        print(f"🔍 [Validation]: {reason}")
+        print(f"📋 Kết quả: {'✅ Là menu' if is_menu else '❌ Không phải menu'}")
+
+        menu_cache[img_hash] = (is_menu, time.time())
+        menu_cache.move_to_end(img_hash)
+        
+        # 🗑️ Xóa ảnh cũ nhất nếu cache đầy
+        if len(menu_cache) > MAX_CACHE_SIZE:
+            oldest_hash, oldest_data = menu_cache.popitem(last=False)
+            days_ago = int((time.time() - oldest_data[1]) / 86400)
+            print(f"🗑️ [Cache FULL] Đã xóa ảnh cũ nhất (check {days_ago} ngày trước)")
+        
+        # 💾 LƯU VÀO FILE
+        save_cache()
+        
+        print(f"💾 [Cache SAVED] Tổng: {len(menu_cache)} ảnh | TTL: 7 ngày")
+        
+        return is_menu
+        
+    except Exception as e:
+        print(f"⚠️ Lỗi validation: {e}")
+        # Nếu lỗi, cho qua để không làm gián đoạn bot
+        return True
+
 def run_genkit_sync(image_bytes, day_str):
     try:
         print(f"--- [Genkit] Đang gửi dữ liệu (Optimized)...")
@@ -295,26 +438,36 @@ async def main_handler(event):
     today = get_today_vietnamese()
     if today == "CN": return
 
-    print(f"\n>> Phát hiện ảnh! Khởi động Popup...")
+    print(f"\n>> Phát hiện ảnh! Đang kiểm tra...")
     
     # [TỐI ƯU] Tải ảnh vào RAM (io.BytesIO) thay vì ổ cứng
     memory_file = io.BytesIO()
     
+    # Tải ảnh trước để validate
+    try:
+        await event.download_media(file=memory_file)
+        memory_file.seek(0)
+        image_bytes = memory_file.getvalue()
+        
+        # VALIDATION: Kiểm tra có phải ảnh menu không
+        if not validate_is_menu_image(image_bytes):
+            print(">> ⏭️ Bỏ qua - Không phải ảnh menu")
+            memory_file.close()
+            return
+        
+        print(">> ✅ Xác nhận là menu! Khởi động GUI...")
+        
+    except Exception as e:
+        print(f"\n❌ Lỗi khi tải/validate ảnh: {e}")
+        memory_file.close()
+        return
+    
     popup = MenuPopup(today)
     
-    def progress_callback(current, total):
-        percent = (current / total) * 100
-        size_mb = current / (1024 * 1024)
-        popup.update_download_progress(percent, size_mb)
-        print(f"\r>> Tải: {percent:.1f}%", end="")
-
     try:
-        # Tải thẳng vào biến memory_file
-        await event.download_media(file=memory_file, progress_callback=progress_callback)
-        memory_file.seek(0) # Đưa con trỏ về đầu file để đọc
-        
-        print("\n>> Tải xong. Chuyển sang đọc AI...")
-        popup.start_analysis(memory_file.getvalue()) # Truyền bytes vào
+        # Ảnh đã được tải và validate rồi, giờ chỉ cần phân tích món
+        print("\n>> Đang đọc món ăn...")
+        popup.start_analysis(image_bytes) # Truyền bytes vào
         
         if popup.selected_dish:
             print(f">> Chốt: {popup.selected_dish}")
