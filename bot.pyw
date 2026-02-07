@@ -568,6 +568,44 @@ async def login_with_gui():
 
     print(f"--- BOT GENKIT ĐANG CHẠY TẠI: {BASE_DIR} ---")
     messagebox.showinfo("Thành công", "Bot đã kết nối thành công!")
+
+    # ⚠️ Auto-shutdown: tự động ngắt sau 13:00 để tiết kiệm RAM
+    async def _auto_shutdown_at_13(client, hour: int = 13, minute: int = 0):
+        try:
+            now = datetime.datetime.now()
+            target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if now >= target:
+                # Nếu đã qua 13:00 tại thời điểm khởi động, dừng ngay
+                print(f"⏰ [Auto-shutdown] Đã vượt quá {hour}:00, sẽ dừng ngay.")
+            else:
+                delta = (target - now).total_seconds()
+                print(f"⏰ [Auto-shutdown] Lên lịch dừng sau {delta/60:.1f} phút (lúc {target.time()}).")
+                await asyncio.sleep(delta)
+
+            # Thử ngắt kết nối client một cách từ từ
+            try:
+                await client.disconnect()
+                print("✅ [Auto-shutdown] Đã ngắt kết nối client.")
+            except Exception as e:
+                print(f"⚠️ [Auto-shutdown] Lỗi khi ngắt kết nối: {e}")
+
+            # Thông báo qua GUI (nếu có) rồi exit ngay để giải phóng RAM
+            try:
+                messagebox.showinfo("Tự động tắt", f"Bot sẽ dừng hoạt động lúc {hour}:00 để tiết kiệm RAM.")
+            except Exception:
+                pass
+
+            # Dừng tiến trình ngay lập tức
+            os._exit(0)
+        except Exception as e:
+            print(f"⚠️ [Auto-shutdown] Lỗi: {e}")
+
+    # Tạo task nền để tự động dừng vào 13:00
+    try:
+        asyncio.create_task(_auto_shutdown_at_13(client))
+    except Exception as e:
+        print(f"⚠️ Không thể lên lịch auto-shutdown: {e}")
+
     await client.run_until_disconnected()
 
 if __name__ == '__main__':
