@@ -585,9 +585,9 @@ async def login_with_gui():
             # Thử ngắt kết nối client một cách từ từ
             try:
                 await client.disconnect()
-                print("✅ [Auto-shutdown] Đã ngắt kết nối client.")
+                print("[Auto-shutdown] Đã ngắt kết nối client.")
             except Exception as e:
-                print(f"⚠️ [Auto-shutdown] Lỗi khi ngắt kết nối: {e}")
+                print(f"[Auto-shutdown] Lỗi khi ngắt kết nối: {e}")
 
             # Thông báo qua GUI (nếu có) rồi exit ngay để giải phóng RAM
             try:
