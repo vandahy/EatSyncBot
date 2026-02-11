@@ -82,6 +82,7 @@ htmlcov/
 *.bmp
 menu_temp.jpg
 menu_server.jpg
+menu_cache.json
 temp/
 tmp/
 *.tmp
