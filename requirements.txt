@@ -1,0 +1,17 @@
+# ================================================
+# DEPENDENCIES - BOT ĐẶT CƠM TỰ ĐỘNG v1.0
+# ================================================
+
+# Core Dependencies
+python-telegram==0.19.0
+telethon==1.37.0
+Pillow==10.4.0
+pydantic==2.10.5
+python-dotenv==1.0.1
+
+# Google AI / Genkit
+google-generativeai==0.8.3
+google-genkit==0.8.1
+
+# Utilities
+cryptography==44.0.0
