@@ -33,7 +33,6 @@ from pydantic import BaseModel, Field
 # Thư viện ảnh và Telegram
 from PIL import Image
 from telethon import TelegramClient, events
-from dotenv import load_dotenv
 
 # === Cấu hình đường dẫn ===
 # BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -48,30 +47,106 @@ else:
 
 def get_path(filename):
     return os.path.join(BASE_DIR, filename)
-# === Load file .env ===
-env_path = get_path('.env')
-load_dotenv(env_path)
 
-# === Kiểm tra biến môi trường ===
-try:
-    VAR_ID = os.getenv("API_ID")
-    VAR_HASH = os.getenv("API_HASH")
-    VAR_KEY = os.getenv("GEMINI_API_KEY")
+# === Load/Create config.json ===
+def load_config():
+    """
+    Tải cấu hình từ config.json. Nếu file chưa tồn tại hoặc thiếu thông tin,
+    tạo file mẫu và yêu cầu người dùng điền thông tin.
+    """
+    config_path = get_path('config.json')
+    
+    # Template mặc định
+    default_config = {
+        "api_id": "NHAP_API_ID_TELEGRAM",
+        "api_hash": "NHAP_API_HASH_TELEGRAM",
+        "gemini_api_key": "NHAP_KEY_GOOGLE_AI",
+        "target_group_ids": [-123456789, -987654321],
+        "auto_shutdown_hour": 13
+    }
+    
+    # Nếu file chưa tồn tại, tạo file mẫu
+    if not os.path.exists(config_path):
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(default_config, f, ensure_ascii=False, indent=2)
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showwarning(
+                "Lần đầu chạy Bot",
+                f"File config.json đã được tạo tại:\n{config_path}\n\n"
+                "Vui lòng mở file và điền đầy đủ thông tin API, sau đó chạy lại bot."
+            )
+            # Mở file config cho người dùng
+            try:
+                os.startfile(config_path)
+            except:
+                pass
+            sys.exit(0)
+        except Exception as e:
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror("LỖI", f"Không thể tạo file config:\n{e}")
+            sys.exit(1)
+    
+    # Đọc file config
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        # Validate: kiểm tra xem người dùng đã điền thông tin chưa
+        api_id = config.get('api_id', '')
+        api_hash = config.get('api_hash', '')
+        gemini_key = config.get('gemini_api_key', '')
+        
+        if (str(api_id).startswith('NHAP_') or 
+            str(api_hash).startswith('NHAP_') or 
+            str(gemini_key).startswith('NHAP_')):
+            
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror(
+                "Thiếu cấu hình",
+                f"File config.json chưa được điền đầy đủ!\n\n"
+                f"Vui lòng mở file tại:\n{config_path}\n\n"
+                "và thay thế các giá trị 'NHAP_...' bằng API thật."
+            )
+            # Mở file config
+            try:
+                os.startfile(config_path)
+            except:
+                pass
+            sys.exit(1)
+        
+        # Parse API_ID sang int
+        try:
+            config['api_id'] = int(api_id)
+        except:
+            raise ValueError(f"api_id phải là số nguyên, nhận được: {api_id}")
+        
+        return config
+        
+    except json.JSONDecodeError as e:
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror(
+            "Lỗi định dạng JSON",
+            f"File config.json có lỗi cú pháp:\n{e}\n\nVui lòng kiểm tra lại định dạng."
+        )
+        sys.exit(1)
+    except Exception as e:
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror("LỖI", f"Không thể đọc config:\n{e}")
+        sys.exit(1)
 
-    if not VAR_ID or not VAR_HASH or not VAR_KEY:
-        raise ValueError(f"File .env bị thiếu thông tin!\nĐang đọc từ: {env_path}")
-
-    API_ID = int(VAR_ID)
-    API_HASH = VAR_HASH
-    GEMINI_API_KEY = VAR_KEY
-
-except Exception as e:
-    root = tk.Tk()
-    root.withdraw()
-    messagebox.showerror("LỖI CẤU HÌNH BOT", f"❌ Bot không thể khởi động!\n\nNguyên nhân: {e}")
-    sys.exit()
-
-GROUP_ID = [-268078931, -5162755092]
+# Load config ngay khi khởi động
+config = load_config()
+API_ID = config['api_id']
+API_HASH = config['api_hash']
+GEMINI_API_KEY = config['gemini_api_key']
+GROUP_ID = config.get('target_group_ids', [])
+AUTO_SHUTDOWN_HOUR = config.get('auto_shutdown_hour', 13)
 
 # === CACHE THÔNG MINH CHO MENU CÔNG TY ===
 CACHE_FILE = get_path('menu_cache.json')
@@ -470,20 +545,28 @@ class MenuPopup:
     def confirm(self):
         if self.listbox.curselection():
             self.selected_dish = self.listbox.get(self.listbox.curselection())
-            # Nếu người dùng muốn ăn ít cơm, thêm chú thích
+            # Lưu giá trị checkbox TRƯỚC KHI destroy window để tránh lỗi
             try:
-                if self.less_rice_var.get():
-                    self.selected_dish = f"{self.selected_dish} (ít cơm)"
+                is_less_rice = self.less_rice_var.get()
             except Exception:
-                pass
+                is_less_rice = False
+            
+            # Nếu người dùng muốn ăn ít cơm, thêm chú thích
+            if is_less_rice:
+                self.selected_dish = f"{self.selected_dish} (ít cơm)"
+            
             self.root.destroy()
 
 # ================= USERBOT LOGIC =================
 session_path = get_path('my_userbot')
 client = TelegramClient(session_path, API_ID, API_HASH, connection_retries=None)
 
-@client.on(events.NewMessage(chats=GROUP_ID))
+@client.on(events.NewMessage())
 async def main_handler(event):
+    # Kiểm tra xem tin nhắn có từ nhóm được chỉ định không
+    if event.chat_id not in GROUP_ID:
+        return  # Bỏ qua nếu không phải nhóm mục tiêu
+    
     is_menu = False
     if event.photo: is_menu = True
     elif event.document and event.file.mime_type and event.file.mime_type.startswith('image/'): is_menu = True
@@ -569,34 +652,37 @@ async def login_with_gui():
     print(f"--- BOT GENKIT ĐANG CHẠY TẠI: {BASE_DIR} ---")
     messagebox.showinfo("Thành công", "Bot đã kết nối thành công!")
 
-    # ⚠️ Auto-shutdown: tự động ngắt sau 13:00 để tiết kiệm RAM
-    async def _auto_shutdown_at_13(client, hour: int = 13, minute: int = 0):
+    # ⚠️ Auto-shutdown: tự động ngắt sau giờ đã đặt để tiết kiệm RAM
+    async def _auto_shutdown_at_13(client, hour: int = AUTO_SHUTDOWN_HOUR, minute: int = 0):
         try:
             now = datetime.datetime.now()
             target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            
             if now >= target:
-                # Nếu đã qua 13:00 tại thời điểm khởi động, dừng ngay
-                print(f"⏰ [Auto-shutdown] Đã vượt quá {hour}:00, sẽ dừng ngay.")
+                # Nếu đã qua giờ giới nghiêm tại thời điểm khởi động, tiếp tục chạy bình thường
+                print(f"⏰ [Auto-shutdown] Đã vượt quá {hour}:00, bot sẽ tiếp tục chạy.")
+                return  # Không tắt, cho phép bot hoạt động bình thường
             else:
+                # Nếu chưa đến giờ, lên lịch tắt
                 delta = (target - now).total_seconds()
                 print(f"⏰ [Auto-shutdown] Lên lịch dừng sau {delta/60:.1f} phút (lúc {target.time()}).")
                 await asyncio.sleep(delta)
 
-            # Thử ngắt kết nối client một cách từ từ
-            try:
-                await client.disconnect()
-                print("[Auto-shutdown] Đã ngắt kết nối client.")
-            except Exception as e:
-                print(f"[Auto-shutdown] Lỗi khi ngắt kết nối: {e}")
+                # Thử ngắt kết nối client một cách từ từ
+                try:
+                    await client.disconnect()
+                    print("[Auto-shutdown] Đã ngắt kết nối client.")
+                except Exception as e:
+                    print(f"[Auto-shutdown] Lỗi khi ngắt kết nối: {e}")
 
-            # Thông báo qua GUI (nếu có) rồi exit ngay để giải phóng RAM
-            try:
-                messagebox.showinfo("Tự động tắt", f"Bot sẽ dừng hoạt động lúc {hour}:00 để tiết kiệm RAM.")
-            except Exception:
-                pass
+                # Thông báo qua GUI (nếu có) rồi exit ngay để giải phóng RAM
+                try:
+                    messagebox.showinfo("Tự động tắt", f"Bot sẽ dừng hoạt động lúc {hour}:00 để tiết kiệm RAM.")
+                except Exception:
+                    pass
 
-            # Dừng tiến trình ngay lập tức
-            os._exit(0)
+                # Dừng tiến trình ngay lập tức
+                os._exit(0)
         except Exception as e:
             print(f"⚠️ [Auto-shutdown] Lỗi: {e}")
 
