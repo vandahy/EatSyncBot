@@ -14,9 +14,9 @@ from collections import OrderedDict
 import hashlib
 import time
 import json
-# ==============================================================================
+
 # [PATCH FIX] VÁ LỖI GENKIT ALPHA
-# ==============================================================================
+
 _original_to_json_schema = genkit.core.schema.to_json_schema
 def _safe_to_json_schema(schema_or_type):
     try:
@@ -26,6 +26,7 @@ def _safe_to_json_schema(schema_or_type):
 genkit.core.schema.to_json_schema = _safe_to_json_schema
 
 # === IMPORT THƯ VIỆN GENKIT ===
+
 import google.generativeai as genai 
 import json
 from pydantic import BaseModel, Field
@@ -35,9 +36,7 @@ from PIL import Image
 from telethon import TelegramClient, events
 
 # === Cấu hình đường dẫn ===
-# BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# def get_path(filename):
-#     return os.path.join(BASE_DIR, filename)
+
 if getattr(sys, 'frozen', False):
     # Nếu đang chạy bằng file EXE, lấy đường dẫn của file EXE
     BASE_DIR = os.path.dirname(sys.executable)
@@ -50,10 +49,7 @@ def get_path(filename):
 
 # === Load/Create config.json ===
 def load_config():
-    """
-    Tải cấu hình từ config.json. Nếu file chưa tồn tại hoặc thiếu thông tin,
-    tạo file mẫu và yêu cầu người dùng điền thông tin.
-    """
+
     config_path = get_path('config.json')
     
     # Template mặc định
