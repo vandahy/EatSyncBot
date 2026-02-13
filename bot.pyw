@@ -168,14 +168,9 @@ class MenuInput(BaseModel):
     image_base64: str = Field(description="Ảnh thực đơn đã mã hóa Base64.")
     day_str: str = Field(description="Ngày cần tìm món (Ví dụ: THỨ 2).")
 
-# === [HÀM MỚI] TỐI ƯU ẢNH SIÊU TỐC ===
+# === TỐI ƯU ẢNH SIÊU TỐC ===
 def optimize_image_for_ai(pil_image: Image.Image) -> str:
-    """
-    Resize ảnh nếu quá lớn và nén JPEG chất lượng cao để gửi nhanh hơn.
-    Giữ nguyên độ nét text bằng subsampling=0.
-    """
-    # 1. Resize nếu ảnh quá to (trên 2000px) để giảm tải upload
-    # Gemini Flash đọc tốt ở mức 1500-2000px, 4000px là thừa thãi
+
     max_dimension = 2048
     width, height = pil_image.size
     
@@ -199,7 +194,7 @@ def optimize_image_for_ai(pil_image: Image.Image) -> str:
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 # === 3. HÀM LOGIC AI ===
-# @ai.flow() <--- Bỏ decorator Genkit
+
 async def analyze_menu_flow(input_data: MenuInput) -> MenuResult:
     try:
         # Lấy dữ liệu từ input object
@@ -268,7 +263,7 @@ def get_today_vietnamese():
 
 def load_cache():
     if not os.path.exists(CACHE_FILE):
-        print(f"📂 [Cache] File chưa tồn tại, tạo file mới: {CACHE_FILE}")
+        print(f"[Cache] File chưa tồn tại, tạo file mới: {CACHE_FILE}")
         # Tạo file JSON rỗng
         with open(CACHE_FILE, 'w', encoding='utf-8') as f:
             json.dump({}, f)
@@ -298,10 +293,10 @@ def load_cache():
         
         return valid_cache
     except FileNotFoundError:
-        print(f"--- [Cache] Không tìm thấy file cache. Tạo mới.")
+        print(f"[Cache] Không tìm thấy file cache. Tạo mới.")
         return OrderedDict()
     except Exception as e:
-        print(f"--- [Cache] Lỗi khi tải cache: {e}")
+        print(f"[Cache] Lỗi khi tải cache: {e}")
         return OrderedDict()
     
 menu_cache = load_cache()
@@ -312,7 +307,7 @@ def save_cache():
         with open(CACHE_FILE, 'w', encoding='utf-8') as f:
             json.dump(dict(menu_cache), f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"⚠️ [Cache] Lỗi ghi file: {e}")
+        print(f"[Cache] Lỗi ghi file: {e}")
 
 def validate_is_menu_image(image_bytes):
     """
@@ -350,14 +345,14 @@ def validate_is_menu_image(image_bytes):
                 day_left = int((CACHE_TTL - age) / 86400)
                 hours_ago = int(age / 3600)
                 elapsed = (time.perf_counter() - start_time)
-                print(f"💾 [Cache HIT] hash={img_hash} size={size_kb:.1f}KB {w}x{h} age={hours_ago}h left={day_left}d (checked in {elapsed:.2f}s)")
+                print(f"[Cache HIT] hash={img_hash} size={size_kb:.1f}KB {w}x{h} age={hours_ago}h left={day_left}d (checked in {elapsed:.2f}s)")
                 return is_menu
             else:
-                print(f"💾 [Cache EXPIRED] hash={img_hash}, kiểm tra lại với AI.")
+                print(f"[Cache EXPIRED] hash={img_hash}, kiểm tra lại với AI.")
                 del menu_cache[img_hash]
                 save_cache()
 
-        print(f"--- [Validation] Đang kiểm tra ảnh... (hash={img_hash}, size={size_kb:.1f}KB, {w}x{h})")
+        print(f"[Validation] Đang kiểm tra ảnh... (hash={img_hash}, size={size_kb:.1f}KB, {w}x{h})")
 
         # Dùng optimized image cho lần gọi AI để giảm payload và thời gian
         img_for_ai = Image.open(io.BytesIO(image_bytes))
@@ -401,8 +396,8 @@ Trả về JSON:
         reason = result.get('reason', 'Không rõ')
 
         elapsed = time.perf_counter() - start_time
-        print(f"🔍 [Validation]: {reason} (AI took {ai_elapsed:.2f}s, total {elapsed:.2f}s)")
-        print(f"📋 Kết quả: {'✅ Là menu' if is_menu else '❌ Không phải menu'}")
+        print(f"[Validation]: {reason} (AI took {ai_elapsed:.2f}s, total {elapsed:.2f}s)")
+        print(f"[Validation] Kết quả: {'✅ Là menu' if is_menu else '❌ Không phải menu'}")
 
         # Lưu vào cache dùng hash normalized
         menu_cache[img_hash] = (is_menu, time.time())
@@ -412,12 +407,12 @@ Trả về JSON:
         if len(menu_cache) > MAX_CACHE_SIZE:
             oldest_hash, oldest_data = menu_cache.popitem(last=False)
             days_ago = int((time.time() - oldest_data[1]) / 86400)
-            print(f"🗑️ [Cache FULL] Đã xóa ảnh cũ nhất (check {days_ago} ngày trước)")
+            print(f"[Cache FULL] Đã xóa ảnh cũ nhất (check {days_ago} ngày trước)")
 
         # 💾 LƯU VÀO FILE
         save_cache()
 
-        print(f"💾 [Cache SAVED] Tổng: {len(menu_cache)} ảnh | TTL: 7 ngày")
+        print(f"[Cache SAVED] Tổng: {len(menu_cache)} ảnh | TTL: 7 ngày")
 
         return is_menu
 
@@ -428,7 +423,7 @@ Trả về JSON:
 
 def run_genkit_sync(image_bytes, day_str):
     try:
-        print(f"--- [Genkit] Đang gửi dữ liệu (Optimized)...")
+        print(f"[Genkit] Đang gửi dữ liệu (Optimized)...")
         # Xử lý ảnh trước khi vào flow để tránh lỗi JSON serialization
         img = Image.open(io.BytesIO(image_bytes))
         img_base64 = optimize_image_for_ai(img)
@@ -448,13 +443,13 @@ def run_genkit_sync(image_bytes, day_str):
             data = result # Trường hợp là dict lỗi
 
         reason = data.get('reason', 'Không có lý do')
-        print(f"🧐 [AI]: {reason}")
+        print(f"[AI]: {reason}")
 
         if not data.get('is_menu') or not data.get('has_requested_day'):
             return []
             
         dishes = data.get('dishes', [])
-        print(f"✅ [AI] Món: {dishes}")
+        print(f"[AI] Món: {dishes}")
         return dishes
     except Exception as e:
         print(f"Lỗi Wrapper: {e}")
@@ -497,10 +492,10 @@ class MenuPopup:
         self.auto_close_job = None
 
     def update_download_progress(self, percent, size_mb):
-        self.lbl_status.config(text=f"⬇️ Đang tải RAM...", fg="orange")
+        self.lbl_status.config(text=f"Đang tải RAM...", fg="orange")
         self.lbl_progress.config(text=f"{percent:.1f}% ({size_mb:.2f} MB)")
         self.root.update()
-
+    
     def start_analysis(self, image_bytes):
         self.image_bytes = image_bytes
         self.lbl_status.config(text="🤖 Genkit đang đọc menu...", fg="blue")
