@@ -582,7 +582,7 @@ async def main_handler(event):
         
         # VALIDATION: Kiểm tra có phải ảnh menu không
         if not validate_is_menu_image(image_bytes):
-            print(">> ⏭️ Bỏ qua - Không phải ảnh menu")
+            print(">> Bỏ qua - Không phải ảnh menu")
             memory_file.close()
             return
         
@@ -651,12 +651,12 @@ async def login_with_gui():
             
             if now >= target:
                 # Nếu đã qua giờ giới nghiêm tại thời điểm khởi động, tiếp tục chạy bình thường
-                print(f"⏰ [Auto-shutdown] Đã vượt quá {hour}:00, bot sẽ tiếp tục chạy.")
+                print(f"[Auto-shutdown] Đã vượt quá {hour}:00, bot sẽ tiếp tục chạy.")
                 return  # Không tắt, cho phép bot hoạt động bình thường
             else:
                 # Nếu chưa đến giờ, lên lịch tắt
                 delta = (target - now).total_seconds()
-                print(f"⏰ [Auto-shutdown] Lên lịch dừng sau {delta/60:.1f} phút (lúc {target.time()}).")
+                print(f"[Auto-shutdown] Lên lịch dừng sau {delta/60:.1f} phút (lúc {target.time()}).")
                 await asyncio.sleep(delta)
 
                 # Thử ngắt kết nối client một cách từ từ
@@ -675,13 +675,13 @@ async def login_with_gui():
                 # Dừng tiến trình ngay lập tức
                 os._exit(0)
         except Exception as e:
-            print(f"⚠️ [Auto-shutdown] Lỗi: {e}")
+            print(f"[Auto-shutdown] Lỗi: {e}")
 
     # Tạo task nền để tự động dừng vào 13:00
     try:
         asyncio.create_task(_auto_shutdown_at_13(client))
     except Exception as e:
-        print(f"⚠️ Không thể lên lịch auto-shutdown: {e}")
+        print(f"Không thể lên lịch auto-shutdown: {e}")
 
     await client.run_until_disconnected()
 
