@@ -154,7 +154,7 @@ CACHE_TTL = 604800  # 7 ngày
 genai.configure(api_key=GEMINI_API_KEY)
 
 # Sử dụng model đã test thành công
-MODEL_NAME = 'models/gemini-2.5-flash-preview-09-2025' 
+MODEL_NAME = 'models/gemini-2.5-flash' 
 model = genai.GenerativeModel(MODEL_NAME)
 
 # === 2. ĐỊNH NGHĨA SCHEMA ===
