@@ -847,6 +847,28 @@ async def main_handler(event):
     finally:
         memory_file.close()
 
+def normalize_phone_number(raw_phone: str) -> str:
+    """
+    Chuẩn hóa số điện thoại về định dạng quốc tế.
+    Hỗ trợ các dạng người Việt hay nhập:
+      0912345678   → +84912345678
+      84912345678  → +84912345678
+      +84912345678 → +84912345678 (giữ nguyên)
+    """
+    phone = raw_phone.strip().replace(" ", "").replace("-", "").replace(".", "")
+ 
+    if phone.startswith("0"):
+        # Số nội địa VN: bỏ số 0 đầu, thêm +84
+        phone = "+84" + phone[1:]
+    elif phone.startswith("84") and not phone.startswith("+"):
+        # Người dùng nhập 84... mà quên dấu +
+        phone = "+" + phone
+    elif not phone.startswith("+"):
+        # Trường hợp khác, cứ thêm + vào đầu
+        phone = "+" + phone
+ 
+    return phone
+
 
 async def login_with_gui():
     # Kết nối tới server Telegram
@@ -855,12 +877,15 @@ async def login_with_gui():
     # Kiểm tra xem đã đăng nhập chưa (dựa vào file .session)
     if not await client.is_user_authorized():
         # 1. Yêu cầu nhập số điện thoại qua GUI
-        phone = simpledialog.askstring(
-            "Đăng nhập Telegram", "Nhập số điện thoại (VD: +84912345678):"
+        raw_phone = simpledialog.askstring(
+            "Đăng nhập Telegram", "Nhập số điện thoại:\n(VD: 0912345678 hoặc +84912345678)"
         )
-        if not phone:
+        if not raw_phone:
             sys.exit()
 
+        phone = normalize_phone_number(raw_phone)
+        print(f"[Login] Số điện thoại sau chuẩn hóa: {phone}")
+        
         # Gửi mã OTP
         sent_code = await client.send_code_request(phone)
 
