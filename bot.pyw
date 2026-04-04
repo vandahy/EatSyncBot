@@ -15,6 +15,7 @@ from collections import OrderedDict
 import hashlib
 import time
 import json
+import random
 
 # [PATCH FIX] VÁ LỖI GENKIT ALPHA
 
@@ -710,6 +711,15 @@ class MenuPopup:
             bg="green",
             fg="white",
         )
+        self.btn_random = tk.Button(
+            self.root,
+            text="🎲 RANDOM MÓN",
+            command=self.pick_random_dish,
+            state=tk.DISABLED,
+            bg="#1f7a8c",
+            fg="white",
+        )
+        self.btn_random.pack(pady=(4, 6), fill=tk.X)
         self.btn.pack(pady=10, fill=tk.X)
         self.auto_close_job = None
 
@@ -722,6 +732,7 @@ class MenuPopup:
         self.image_bytes = image_bytes
         self.lbl_status.config(text="🤖 Genkit đang đọc menu...", fg="blue")
         self.lbl_progress.config(text="")
+        self.btn_random.config(state=tk.DISABLED)
         self.auto_close_job = self.root.after(60000, self.root.destroy)
         threading.Thread(target=self.run_ai, daemon=True).start()
         self.root.mainloop()
@@ -733,6 +744,8 @@ class MenuPopup:
     def update_list(self, dishes):
         if not dishes:
             self.lbl_status.config(text="❌ Không đọc được!", fg="red")
+            self.btn_random.config(state=tk.DISABLED)
+            self.btn.config(state=tk.DISABLED)
             # Đảm bảo checkbox bị vô hiệu nếu không có món
             try:
                 self.chk_less_rice.config(state=tk.DISABLED)
@@ -745,7 +758,8 @@ class MenuPopup:
         self.listbox.delete(0, tk.END)
         for d in dishes:
             self.listbox.insert(tk.END, d)
-        # Bật nút chốt và checkbox
+        # Bật nút chốt, nút random và checkbox
+        self.btn_random.config(state=tk.NORMAL)
         self.btn.config(state=tk.NORMAL)
         try:
             self.chk_less_rice.config(state=tk.NORMAL)
@@ -756,6 +770,21 @@ class MenuPopup:
         if self.listbox.size() > 0:
             self.listbox.selection_set(0)
         self.root.focus_force()
+
+    def pick_random_dish(self):
+        total_items = self.listbox.size()
+        if total_items <= 0:
+            self.lbl_status.config(text="⚠️ Chưa có món để random", fg="orange")
+            return
+
+        picked_index = random.randrange(total_items)
+        picked_dish = self.listbox.get(picked_index)
+
+        self.listbox.selection_clear(0, tk.END)
+        self.listbox.selection_set(picked_index)
+        self.listbox.activate(picked_index)
+        self.listbox.see(picked_index)
+        self.lbl_status.config(text=f"🎲 Gợi ý: {picked_dish}", fg="blue")
 
     def confirm(self):
         if self.listbox.curselection():
